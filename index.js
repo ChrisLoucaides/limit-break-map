@@ -269,17 +269,19 @@ LoadEverything().then(function() {
 
     globe.controls().autoRotate = false;
 
-    if (validPositions.length === 1) {
-      globe.pointOfView(
-        { lat: validPositions[0][0], lng: validPositions[0][1], altitude: 1.2 },
-        2000
-      );
-      return;
-    }
+    setTimeout(function() {
+      if (validPositions.length === 1) {
+        globe.pointOfView(
+          { lat: validPositions[0][0], lng: validPositions[0][1], altitude: 1.2 },
+          2000
+        );
+        return;
+      }
 
-    var mid = sphereMidpoint(validPositions[0], validPositions[1]);
-    var sep = angularSep(validPositions[0], validPositions[1]);
-    globe.pointOfView({ lat: mid[0], lng: mid[1], altitude: sepToAlt(sep) }, 2000);
+      var mid = sphereMidpoint(validPositions[0], validPositions[1]);
+      var sep = angularSep(validPositions[0], validPositions[1]);
+      globe.pointOfView({ lat: mid[0], lng: mid[1], altitude: sepToAlt(sep) }, 2000);
+    }, 2000); // Adjust timeout here
   }
 
   function sphereMidpoint(p1, p2) {

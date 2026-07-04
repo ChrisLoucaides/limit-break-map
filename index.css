@@ -31,8 +31,6 @@ body {
 
 .player-panel {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
   z-index: 10;
   background: var(--bg-color, rgba(8, 12, 24, 0.88));
   border-radius: var(--border-radius, 10px);
@@ -40,21 +38,12 @@ body {
   color: var(--text-color, #fff);
   display: none;
   flex-direction: column;
+  align-items: flex-start;
   gap: 6px;
   min-width: 170px;
   max-width: 230px;
   box-shadow: 0 4px 28px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.07);
-}
-
-.player-panel-left {
-  left: 24px;
-  align-items: flex-start;
-}
-
-.player-panel-right {
-  right: 24px;
-  align-items: flex-end;
-  text-align: right;
+  /* left/top are set dynamically by JS to follow the player's globe marker */
 }
 
 .pp-name {

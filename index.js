@@ -20,11 +20,13 @@ function initGlobe() {
     .arcAltitudeAutoScale(0.3)
     .htmlElementsData([])
     .htmlElement(function(d) {
-      // Zero-size wrapper so Globe.gl positions the origin; inner div centers itself via CSS transform
+      // Zero-size wrapper: Globe.gl positions the origin point; inner dot centers via CSS transform.
+      // data-player-index lets updatePanelPositions() find this element in the DOM.
       var outer = document.createElement('div');
       outer.style.width = '0';
       outer.style.height = '0';
       outer.style.overflow = 'visible';
+      outer.dataset.playerIndex = d._index;
 
       var dot = document.createElement('div');
       dot.className = 'globe-marker ' + (d.valid ? 'globe-marker-valid' : 'globe-marker-invalid');
@@ -50,6 +52,8 @@ LoadEverything().then(function() {
   var isPrecise = [];
   var isValid = [];
   var pingData = null;
+  var panelRafId = null;
+  var panelUpdateEnd = 0;
 
   Start = async function(event) {};
 
@@ -62,7 +66,6 @@ LoadEverything().then(function() {
       return;
     }
 
-    panel.style.display = 'flex';
     panel.innerHTML =
       '<div class="pp-name">' + player.name + '</div>' +
       (player.country.asset
@@ -71,6 +74,84 @@ LoadEverything().then(function() {
       (player.country.name ? '<div class="pp-country">' + player.country.name + '</div>' : '') +
       (player.state.name ? '<div class="pp-state">' + player.state.name + '</div>' : '') +
       (!valid ? '<div class="pp-unknown">Location unknown</div>' : '');
+
+    // Start off-screen so dimensions are available but panel isn't seen until positioned
+    panel.style.display = 'flex';
+    panel.style.left = '-9999px';
+    panel.style.top = '0';
+    panel.style.right = 'auto';
+    panel.style.transform = 'none';
+    panel.style.visibility = '';
+  }
+
+  function updatePanelPositions() {
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var gap = 20;
+
+    // Collect both marker screen positions first so each panel can reference the other
+    var markerPos = [];
+    for (var i = 0; i < 2; i++) {
+      var el = document.querySelector('[data-player-index="' + i + '"]');
+      if (el && getComputedStyle(el).visibility !== 'hidden') {
+        var r = el.getBoundingClientRect();
+        markerPos[i] = { x: r.left, y: r.top };
+      } else {
+        markerPos[i] = null;
+      }
+    }
+
+    for (var i = 0; i < 2; i++) {
+      var panel = document.getElementById('player-panel-' + i);
+      if (!panel || panel.style.display === 'none') continue;
+
+      if (!markerPos[i]) {
+        panel.style.visibility = 'hidden';
+        continue;
+      }
+      panel.style.visibility = '';
+
+      var mx = markerPos[i].x;
+      var my = markerPos[i].y;
+      var pw = panel.offsetWidth;
+      var ph = panel.offsetHeight;
+
+      var x, y;
+      var other = markerPos[1 - i];
+
+      if (other) {
+        // Place panel on the opposite side from the other marker (away from the arc)
+        x = other.x > mx ? mx - pw - gap : mx + gap;
+      } else {
+        // Only one visible: fall back to screen-midpoint heuristic
+        x = mx > vw * 0.5 ? mx - pw - gap : mx + gap;
+      }
+
+      y = my - ph / 2;
+
+      x = Math.max(10, Math.min(vw - pw - 10, x));
+      y = Math.max(10, Math.min(vh - ph - 10, y));
+
+      panel.style.left = x + 'px';
+      panel.style.top = y + 'px';
+    }
+  }
+
+  function startPanelPositionUpdater() {
+    // Extend deadline (handles rapid successive UpdateMap calls)
+    panelUpdateEnd = Date.now() + 3500;
+    if (panelRafId) return;
+
+    function loop() {
+      updatePanelPositions();
+      if (Date.now() < panelUpdateEnd) {
+        panelRafId = requestAnimationFrame(loop);
+      } else {
+        panelRafId = null;
+        updatePanelPositions(); // one final settle
+      }
+    }
+    panelRafId = requestAnimationFrame(loop);
   }
 
   function UpdateMap() {
@@ -111,7 +192,7 @@ LoadEverything().then(function() {
 
         if (pingData) servers.push(findClosestServer(pingData, lat, lng));
 
-        markers.push({ lat: lat, lng: lng, valid: validPos });
+        markers.push({ lat: lat, lng: lng, valid: validPos, _index: cardIndex });
         renderPanel(cardIndex, player, validPos);
         cardIndex++;
       });
@@ -130,6 +211,7 @@ LoadEverything().then(function() {
     globe.arcsData(arcs);
 
     animateCamera(validPositions);
+    startPanelPositionUpdater();
 
     if (!window.NOHUD) {
       if (isPrecise.some(function(e) { return e === false; })) {

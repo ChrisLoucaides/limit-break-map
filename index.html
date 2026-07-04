@@ -1,18 +1,16 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <link rel="stylesheet" href="leaflet/leaflet.css" />
-    <script src="proj4.js"></script>
-    <script src="leaflet/leaflet.js"></script>
-    <script src="proj4leaflet.min.js"></script>
-    <script src="leaflet/leaflet-tilelayer-colorfilter.min.js"></script>
     <script src="../include/globals.js"></script>
+    <script src="https://unpkg.com/globe.gl@2/dist/globe.gl.min.js"></script>
     <link rel="stylesheet" href="../main.css" />
     <link rel="stylesheet" href="./index.css" />
   </head>
   <body>
     <div class="container">
-      <div id="map" class="map"></div>
+      <div id="globeViz"></div>
+      <div class="player-panel player-panel-left" id="player-panel-0"></div>
+      <div class="player-panel player-panel-right" id="player-panel-1"></div>
       <div class="overlay">
         <div class="overlay-element" id="distance"></div>
         <div class="overlay-element" id="ping"></div>

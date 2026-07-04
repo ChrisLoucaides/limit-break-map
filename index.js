@@ -1,368 +1,294 @@
-const resolutions = Array.from({ length: 10 })
-  .map((_, i) => (i + 200) ** 2)
-  .reverse();
+var globe = null;
 
-// Define your projection
-var crs = new L.Proj.CRS(
-  "ESRI:53009",
-  "+proj=moll +lon_0=0 +x_0=0 +y_0=0 +a=6371000 +b=6371000 +units=m +no_defs",
-  {
-    resolutions: [65536, 32768, 16384, 8192, 4096, 2048],
-  }
-);
+function initGlobe() {
+  var el = document.getElementById('globeViz');
+  if (!el) return;
 
-var mapOptions = {
-  center: [0, 0],
-  zoom: 1,
-  minZoom: 0,
-  crs,
-  zoomSnap: 0,
-  zoomControl: false,
-};
+  globe = Globe({ animateIn: true })
+    .backgroundColor('rgba(0,0,0,0)')
+    .globeImageUrl('./earth-blue-marble.jpg')
+    .bumpImageUrl('./earth-topology.png')
+    .showAtmosphere(true)
+    .atmosphereColor('rgba(100,175,255,0.9)')
+    .atmosphereAltitude(0.2)
+    .arcsData([])
+    .arcColor('color')
+    .arcDashLength(0.35)
+    .arcDashGap(0.15)
+    .arcDashAnimateTime(1500)
+    .arcStroke(1.5)
+    .arcAltitudeAutoScale(0.3)
+    .htmlElementsData([])
+    .htmlElement(function(d) {
+      // Zero-size wrapper so Globe.gl positions the origin; inner div centers itself via CSS transform
+      var outer = document.createElement('div');
+      outer.style.width = '0';
+      outer.style.height = '0';
+      outer.style.overflow = 'visible';
 
-var map = L.map("map", mapOptions);
+      var dot = document.createElement('div');
+      dot.className = 'globe-marker ' + (d.valid ? 'globe-marker-valid' : 'globe-marker-invalid');
+      outer.appendChild(dot);
+      return outer;
+    })
+    .htmlAltitude(0.01)
+    (el);
 
-console.log(map.getBounds());
+  globe.controls().enableZoom = false;
+  globe.controls().enablePan = false;
+  globe.controls().enableRotate = false;
+  globe.controls().autoRotate = true;
+  globe.controls().autoRotateSpeed = 0.5;
 
-// Coordinate system is EPSG:28992 / Amersfoort / RD New
-var imageBounds = L.bounds(
-  [-18019909.21, -9009954.61],
-  [18019909.21, 9009954.61]
-);
+  globe.pointOfView({ lat: 20, lng: 0, altitude: 2.2 });
+}
 
-var imageOverlay = L.Proj.imageOverlay("./map.svg", imageBounds).addTo(map);
+LoadEverything().then(function() {
+  initGlobe();
 
-map.fitBounds([
-  [-0, 180],
-  [-0, -180],
-]);
-
-// fetch(
-//   "https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json"
-// )
-//   .then((r) => r.json())
-//   .then((r) => {
-//     const countriesGeoJson = L.geoJson(r).addTo(map);
-//     console.log(countriesGeoJson.getBounds());
-//   });
-
-LoadEverything().then(() => {
-  var markers = [];
-  var polylines = [];
   var positions = [];
-  // I use this to know if I added a icon for a state or a country latlng
-  // for country latlng the icon pulses and there's more zoom out
   var isPrecise = [];
+  var isValid = [];
+  var pingData = null;
 
-  Start = async (event) => {};
+  Start = async function(event) {};
+
+  function renderPanel(index, player, valid) {
+    var panel = document.getElementById('player-panel-' + index);
+    if (!panel) return;
+
+    if (!player || !player.name) {
+      panel.style.display = 'none';
+      return;
+    }
+
+    panel.style.display = 'flex';
+    panel.innerHTML =
+      '<div class="pp-name">' + player.name + '</div>' +
+      (player.country.asset
+        ? '<div class="pp-flag" style="background-image:url(\'../../' + player.country.asset + '\')"></div>'
+        : '') +
+      (player.country.name ? '<div class="pp-country">' + player.country.name + '</div>' : '') +
+      (player.state.name ? '<div class="pp-state">' + player.state.name + '</div>' : '') +
+      (!valid ? '<div class="pp-unknown">Location unknown</div>' : '');
+  }
 
   function UpdateMap() {
+    if (!globe) return;
     console.log(pingData);
-
-    markers.forEach((marker) => {
-      map.removeLayer(marker);
-    });
-    markers = [];
-
-    polylines.forEach((poly) => {
-      poly.removeFrom(map);
-    });
-    polylines = [];
 
     positions = [];
     isPrecise = [];
     isValid = [];
 
-    let servers = [];
+    var servers = [];
+    var markers = [];
+    var cardIndex = 0;
 
-    Object.values(data.score[window.scoreboardNumber].team).forEach((team) => {
-      Object.values(team.player).forEach((player) => {
-        if(!player.name){
-          return
+    Object.values(data.score[window.scoreboardNumber].team).forEach(function(team) {
+      Object.values(team.player).forEach(function(player) {
+        if (!player.name) {
+          renderPanel(cardIndex, null, false);
+          cardIndex++;
+          return;
         }
 
-        let pos = [
-          player.state.latitude != null && !window.COUNTRY_ONLY
-            ? parseFloat(player.state.latitude)
-            : parseFloat(player.country.latitude),
-          player.state.longitude != null && !window.COUNTRY_ONLY
-            ? parseFloat(player.state.longitude)
-            : parseFloat(player.country.longitude),
-        ];
+        var lat = (player.state.latitude != null && !window.COUNTRY_ONLY)
+          ? parseFloat(player.state.latitude)
+          : parseFloat(player.country.latitude);
+        var lng = (player.state.longitude != null && !window.COUNTRY_ONLY)
+          ? parseFloat(player.state.longitude)
+          : parseFloat(player.country.longitude);
 
-        let validPos = !Number.isNaN(pos[0]) && !Number.isNaN(pos[1]);
-        if(!validPos) pos = [0, 0]
+        var validPos = !Number.isNaN(lat) && !Number.isNaN(lng);
+        if (!validPos) { lat = 0; lng = 0; }
+
         isValid.push(validPos);
+        positions.push([lat, lng]);
 
-        positions.push(pos);
+        var precise = player.state.latitude != null && !window.COUNTRY_ONLY && validPos;
+        isPrecise.push(precise);
 
-        let server = findClosestServer(pingData, pos[0], pos[1]);
-        servers.push(server);
+        if (pingData) servers.push(findClosestServer(pingData, lat, lng));
 
-        let directions = ["top", "bottom", "left", "right"];
-        let direction = 0;
-
-        positions.forEach((position) => {
-          if (position != pos) {
-            if (position[0] == pos[0] && position[1] == pos[1]) {
-              direction = (direction + 1) % directions.length;
-            }
-          }
-        });
-
-        let offsetDistance = validPos ? 12 : 32
-
-        let offsets = {
-          "top": [0, -offsetDistance],
-          "bottom": [0, offsetDistance],
-          "left":[-offsetDistance, 0],
-          "right": [offsetDistance, 0]
-        }
-
-        let marker = L.marker(pos, {
-          icon: L.icon({
-            iconUrl: validPos ? "./marker.svg" : "./questionmark.svg",
-            iconSize: validPos ? [24, 24] : [64, 64],
-            iconAnchor: validPos ? [12, 12] : [32, 32],
-            className: "blink",
-          }),
-        })
-          .addTo(map)
-          .bindTooltip(
-            `
-              <div style="display: flex; flex-direction: column; align-items: center;">
-                <div class="player_name">${player.name}</div>
-                ${player.country.asset ?
-                  `<div class="flag" style="background-image: url('../../${player.country.asset}')"></div>`
-                  :
-                  ""
-                }
-                <div class="player_country">${player.country.name ? player.country.name : ""}</div>
-                <div class="player_state">${player.state.name ? player.state.name : ""}</div>
-              </div>`,
-            {
-              direction: directions[direction],
-              className: "leaflet-tooltip-own",
-              offset: offsets[directions[direction]],
-            }
-          )
-          .openTooltip();
-
-        markers.push(marker);
-
-        if (!player.state.latitude || window.COUNTRY_ONLY || !validPos) {
-          let marker = L.marker(pos, {
-            icon: L.divIcon({
-              html: `<div class="gps_ring ${!validPos ? "gps_ring_big": ""}"></div>`,
-              className: "css-icon",
-              iconAnchor: [64, 64],
-            }),
-          }).addTo(map);
-
-          markers.push(marker);
-          isPrecise.push(validPos);
-        } else {
-          isPrecise.push(true);
-        }
+        markers.push({ lat: lat, lng: lng, valid: validPos });
+        renderPanel(cardIndex, player, validPos);
+        cardIndex++;
       });
     });
 
+    globe.htmlElementsData(markers);
+
+    var validPositions = positions.filter(function(_, i) { return isValid[i]; });
+    var arcs = getPairs(validPositions).map(function(pair) {
+      return {
+        startLat: pair[0][0], startLng: pair[0][1],
+        endLat: pair[1][0], endLng: pair[1][1],
+        color: ['rgba(255,215,70,0.9)', 'rgba(70,185,255,0.9)']
+      };
+    });
+    globe.arcsData(arcs);
+
+    animateCamera(validPositions);
+
     if (!window.NOHUD) {
-      // Calculate max ping
-      if (isPrecise.some((e) => e == false)) {
-        $("#ping").html("ESTIMATED PING: ???");
-        $("#distance").html("DISTANCE: ???");
+      if (isPrecise.some(function(e) { return e === false; })) {
+        $('#ping').html('ESTIMATED PING: ???');
+        $('#distance').html('DISTANCE: ???');
       } else {
-        let maxPing = 0;
-
-        servers.forEach((server1) => {
-          servers.forEach((server2) => {
-            if (server1 != server2) {
-              let ping = pingBetweenServers(server1, server2);
-              if (ping > maxPing) {
-                maxPing = ping;
-              }
+        var maxPing = 0;
+        servers.forEach(function(s1) {
+          servers.forEach(function(s2) {
+            if (s1 !== s2) {
+              var p = pingBetweenServers(s1, s2);
+              if (p > maxPing) maxPing = p;
             }
           });
         });
 
-        console.log("Max Ping: " + maxPing);
+        var pingString = maxPing < 20 ? '< 20' : maxPing.toFixed(2);
+        $('#ping').html('ESTIMATED PING: ' + pingString + ' ms');
 
-        let pingByDistance = 0;
-
-        positions.forEach((pos1) => {
-          positions.forEach((pos2) => {
-            if (pos1 != pos2) {
-              pingByDistance += distanceInKm(pos1, pos2) * 0.0067;
+        var maxDistance = 0;
+        positions.forEach(function(p1) {
+          positions.forEach(function(p2) {
+            if (p1 !== p2) {
+              var dist = distanceInKm(p1, p2);
+              if (dist > maxDistance) maxDistance = dist;
             }
           });
         });
 
-        console.log("Ping by distance: " + pingByDistance);
+        var distanceString = maxDistance < 100
+          ? '< 100 Km / < 62 mi'
+          : maxDistance.toFixed(2) + ' Km / ' + (maxDistance * 0.621371).toFixed(2) + ' mi';
 
-        let pingString = maxPing < 20 ? "< 20" : maxPing.toFixed(2);
-        $("#ping").html("ESTIMATED PING: " + pingString + " ms");
-
-        let maxDistance = 0;
-
-        positions.forEach((pos1) => {
-          positions.forEach((pos2) => {
-            if (pos1 != pos2) {
-              let distance = distanceInKm(pos1, pos2);
-              if (distance > maxDistance) {
-                maxDistance = distance;
-              }
-            }
-          });
-        });
-
-        console.log("Distance: " + maxDistance);
-
-        let distanceString = "";
-
-        if (maxDistance < 100) {
-          distanceString = "< 100 Km / < 62 mi";
-        } else {
-          distanceString =
-            maxDistance.toFixed(2) +
-            " Km" +
-            " / " +
-            (maxDistance * 0.621371).toFixed(2) +
-            " mi";
-        }
-
-        if (positions.length == 2) {
-          $("#distance").html("DISTANCE: " + distanceString);
-        } else {
-          $("#distance").html("MAX DISTANCE: " + distanceString);
-        }
-      }
-      gsap
-        .timeline()
-        .to([".overlay-element"], { duration: 1, autoAlpha: 1 }, 0);
-    } else {
-      $(".overlay").css("height", 0);
-    }
-
-    map.on("zoomend", () => {});
-
-    let bounds = L.latLngBounds(positions);
-
-    isPrecise.forEach((precise, i) => {
-      if (!precise) {
-        bounds = bounds.extend(
-          L.latLng(positions[i][0], positions[i][1]).toBounds(2000000)
+        $('#distance').html(
+          (positions.length === 2 ? 'DISTANCE' : 'MAX DISTANCE') + ': ' + distanceString
         );
       }
-    });
 
-    // map.flyToBounds(bounds, {
-    //   paddingTopLeft: [30, 30 + $(".overlay").outerHeight()],
-    //   paddingBottomRight: [30, 30],
-    //   duration: 1,
-    //   easeLinearity: 0.2,
-    // });
-
-    let validPositions = positions.filter((pos, i) => {
-      return isPrecise[i];
-    });
-    var polyline = L.polyline(getPairs(validPositions), {
-      color: "lightblue",
-      dashArray: "5,14",
-      weight: 8,
-    }).addTo(map);
-    polylines.push(polyline);
+      gsap.timeline().to(['.overlay-element'], { duration: 1, autoAlpha: 1 }, 0);
+    } else {
+      $('.overlay').css('height', 0);
+    }
   }
 
-  function findClosestServer(pingData, lat, lng) {
-    let closest = pingData[0];
-    let closestVal = Math.getDistance(
-      lat,
-      lng,
-      parseFloat(pingData[0].latitude),
-      parseFloat(pingData[0].longitude)
-    );
+  function animateCamera(validPositions) {
+    if (!globe) return;
 
-    pingData.forEach((server) => {
-      let distance = Math.getDistance(
-        lat,
-        lng,
-        parseFloat(server.latitude),
-        parseFloat(server.longitude)
+    if (validPositions.length === 0) {
+      globe.controls().autoRotate = true;
+      globe.controls().autoRotateSpeed = 0.5;
+      return;
+    }
+
+    globe.controls().autoRotate = false;
+
+    if (validPositions.length === 1) {
+      globe.pointOfView(
+        { lat: validPositions[0][0], lng: validPositions[0][1], altitude: 1.2 },
+        2000
       );
-      if (distance < closestVal) {
-        closestVal = distance;
-        closest = server;
-      }
-    });
+      return;
+    }
 
-    return closest;
+    var mid = sphereMidpoint(validPositions[0], validPositions[1]);
+    var sep = angularSep(validPositions[0], validPositions[1]);
+    globe.pointOfView({ lat: mid[0], lng: mid[1], altitude: sepToAlt(sep) }, 2000);
   }
 
-  function pingBetweenServers(server1, server2) {
-    return server1.pings[server2.id];
+  function sphereMidpoint(p1, p2) {
+    var phi1 = p1[0] * Math.PI / 180, lam1 = p1[1] * Math.PI / 180;
+    var phi2 = p2[0] * Math.PI / 180, lam2 = p2[1] * Math.PI / 180;
+    var Bx = Math.cos(phi2) * Math.cos(lam2 - lam1);
+    var By = Math.cos(phi2) * Math.sin(lam2 - lam1);
+    var phim = Math.atan2(
+      Math.sin(phi1) + Math.sin(phi2),
+      Math.sqrt(Math.pow(Math.cos(phi1) + Bx, 2) + By * By)
+    );
+    var lamm = lam1 + Math.atan2(By, Math.cos(phi1) + Bx);
+    return [phim * 180 / Math.PI, lamm * 180 / Math.PI];
   }
 
-  function distanceInKm(origin, destination) {
-    var lon1 = toRadian(origin[1]),
-      lat1 = toRadian(origin[0]),
-      lon2 = toRadian(destination[1]),
-      lat2 = toRadian(destination[0]);
-
-    var deltaLat = lat2 - lat1;
-    var deltaLon = lon2 - lon1;
-
-    var a =
-      Math.pow(Math.sin(deltaLat / 2), 2) +
-      Math.cos(lat1) * Math.cos(lat2) * Math.pow(Math.sin(deltaLon / 2), 2);
-    var c = 2 * Math.asin(Math.sqrt(a));
-    var EARTH_RADIUS = 6371;
-    return c * EARTH_RADIUS;
-  }
-  function toRadian(degree) {
-    return (degree * Math.PI) / 180;
+  function angularSep(p1, p2) {
+    var phi1 = p1[0] * Math.PI / 180, phi2 = p2[0] * Math.PI / 180;
+    var dlam = (p2[1] - p1[1]) * Math.PI / 180;
+    var dot = Math.sin(phi1) * Math.sin(phi2) + Math.cos(phi1) * Math.cos(phi2) * Math.cos(dlam);
+    return Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
   }
 
-  var pingData = null;
+  function sepToAlt(deg) {
+    if (deg < 5)   return 0.4;
+    if (deg < 15)  return 0.6;
+    if (deg < 30)  return 0.9;
+    if (deg < 60)  return 1.3;
+    if (deg < 100) return 1.8;
+    if (deg < 140) return 2.2;
+    return 2.5;
+  }
 
-  Update = async (event) => {
-    let data = event.data;
-    let oldData = event.oldData;
+  Update = async function(event) {
+    var eventData = event.data;
+    var oldData = event.oldData;
 
     if (!pingData) pingData = await getPings();
 
     if (
-      Object.keys(oldData).length == 0 ||
-      JSON.stringify(oldData.score[window.scoreboardNumber].team["1"].player) !=
-        JSON.stringify(data.score[window.scoreboardNumber].team["1"].player) ||
-      JSON.stringify(oldData.score[window.scoreboardNumber].team["2"].player) !=
-        JSON.stringify(data.score[window.scoreboardNumber].team["2"].player)
+      Object.keys(oldData).length === 0 ||
+      JSON.stringify(oldData.score[window.scoreboardNumber].team['1'].player) !==
+        JSON.stringify(eventData.score[window.scoreboardNumber].team['1'].player) ||
+      JSON.stringify(oldData.score[window.scoreboardNumber].team['2'].player) !==
+        JSON.stringify(eventData.score[window.scoreboardNumber].team['2'].player)
     ) {
       UpdateMap();
     }
   };
 
-  Math.getDistance = function (x1, y1, x2, y2) {
-    var xs = x2 - x1,
-      ys = y2 - y1;
-    xs *= xs;
-    ys *= ys;
-    return Math.sqrt(xs + ys);
+  Math.getDistance = function(x1, y1, x2, y2) {
+    return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
   };
 
   function getPairs(arr) {
-    var res = [],
-      l = arr.length;
-    for (var i = 0; i < l; ++i)
-      for (var j = i + 1; j < l; ++j) res.push([arr[i], arr[j]]);
+    var res = [], l = arr.length;
+    for (var i = 0; i < l; i++)
+      for (var j = i + 1; j < l; j++)
+        res.push([arr[i], arr[j]]);
     return res;
   }
 
-  function getPings() {
-    return $.ajax({
-      dataType: "json",
-      url: "./pings.json",
-      cache: false,
+  function findClosestServer(pd, lat, lng) {
+    var closest = pd[0];
+    var closestVal = Math.getDistance(lat, lng,
+      parseFloat(pd[0].latitude), parseFloat(pd[0].longitude));
+
+    pd.forEach(function(server) {
+      var d = Math.getDistance(lat, lng,
+        parseFloat(server.latitude), parseFloat(server.longitude));
+      if (d < closestVal) { closestVal = d; closest = server; }
     });
+
+    return closest;
+  }
+
+  function pingBetweenServers(s1, s2) {
+    return s1.pings[s2.id];
+  }
+
+  function distanceInKm(origin, destination) {
+    var lon1 = toRadian(origin[1]), lat1 = toRadian(origin[0]);
+    var lon2 = toRadian(destination[1]), lat2 = toRadian(destination[0]);
+    var dLat = lat2 - lat1, dLon = lon2 - lon1;
+    var a = Math.pow(Math.sin(dLat / 2), 2) +
+      Math.cos(lat1) * Math.cos(lat2) * Math.pow(Math.sin(dLon / 2), 2);
+    return 2 * Math.asin(Math.sqrt(a)) * 6371;
+  }
+
+  function toRadian(degree) {
+    return degree * Math.PI / 180;
+  }
+
+  function getPings() {
+    return $.ajax({ dataType: 'json', url: './pings.json', cache: false });
   }
 });

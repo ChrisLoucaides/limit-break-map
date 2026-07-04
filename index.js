@@ -67,10 +67,12 @@ LoadEverything().then(function() {
     }
 
     panel.innerHTML =
-      '<div class="pp-name">' + player.name + '</div>' +
-      (player.country.asset
-        ? '<div class="pp-flag" style="background-image:url(\'../../' + player.country.asset + '\')"></div>'
-        : '') +
+      '<div class="pp-name-row">' +
+        '<div class="pp-name">' + player.name + '</div>' +
+        (player.country.asset
+          ? '<div class="pp-flag" style="background-image:url(\'../../' + player.country.asset + '\')"></div>'
+          : '') +
+      '</div>' +
       (player.country.name ? '<div class="pp-country">' + player.country.name + '</div>' : '') +
       (player.state.name ? '<div class="pp-state">' + player.state.name + '</div>' : '') +
       (!valid ? '<div class="pp-unknown">Location unknown</div>' : '');

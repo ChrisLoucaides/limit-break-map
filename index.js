@@ -318,6 +318,18 @@ LoadEverything().then(function() {
     var eventData = event.data;
     var oldData = event.oldData;
 
+    SetInnerHtml($(".tournament"), eventData.tournamentInfo.tournamentName);
+    SetInnerHtml($(".event"), eventData.tournamentInfo.eventName);
+    SetInnerHtml($(".match"), eventData.score[window.scoreboardNumber].match);
+    SetInnerHtml(
+      $(".phase"),
+      eventData.score[window.scoreboardNumber].phase ? eventData.score[window.scoreboardNumber].phase : ""
+    );
+    SetInnerHtml(
+      $(".best_of"),
+      eventData.score[window.scoreboardNumber].best_of_text ? eventData.score[window.scoreboardNumber].best_of_text : ""
+    );
+
     if (!pingData) pingData = await getPings();
 
     if (
